@@ -1,13 +1,14 @@
-package dev.felipejoglar.klimate.data.remote
+package dev.felipejoglar.klimate.currentweather.data.remote
 
-import dev.felipejoglar.klimate.domain.model.CurrentWeather
-import dev.felipejoglar.klimate.domain.model.Location
-import dev.felipejoglar.klimate.domain.model.Place
-import dev.felipejoglar.klimate.domain.model.WeatherCondition
+import dev.felipejoglar.klimate.currentweather.domain.model.Address
+import dev.felipejoglar.klimate.currentweather.domain.model.CurrentWeather
+import dev.felipejoglar.klimate.currentweather.domain.model.Location
+import dev.felipejoglar.klimate.currentweather.domain.model.Place
+import dev.felipejoglar.klimate.currentweather.domain.model.WeatherCondition
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalDateTime
 
-fun validResponseJson(
+internal fun validResponseJson(
     latitude: Double = 41.65,
     longitude: Double = -4.73,
 ) = """
@@ -127,7 +128,7 @@ fun validResponseJson(
     }
 """.trimIndent()
 
-fun validResponseModel(
+internal fun validResponseModel(
     latitude: Double = 41.65,
     longitude: Double = -4.73,
 ) = CurrentWeather(
@@ -135,6 +136,7 @@ fun validResponseModel(
         location = Location(latitude, longitude),
         address = null,
     ),
+    time = LocalDateTime(2024, 5, 9, 13, 30),
     weatherCondition = WeatherCondition.OVERCAST,
     temperature = 25.3,
     apparentTemperature = 22.4,
@@ -204,7 +206,7 @@ fun validResponseModel(
     ),
 )
 
-fun invalidResponseJson(
+internal fun invalidResponseJson(
     latitude: Double = 41.65,
     longitude: Double = -4.73,
 ) = """
@@ -312,3 +314,9 @@ fun invalidResponseJson(
         }
     }
 """.trimIndent()
+
+internal fun validAddress() = Address(
+    locality = "Locality",
+    region = "Region",
+    country = "Country",
+)

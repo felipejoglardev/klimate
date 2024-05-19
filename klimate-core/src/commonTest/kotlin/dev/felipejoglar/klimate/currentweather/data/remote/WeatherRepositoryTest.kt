@@ -1,9 +1,13 @@
-package dev.felipejoglar.klimate.data.remote
+package dev.felipejoglar.klimate.currentweather.data.remote
 
-import dev.felipejoglar.klimate.data.ConnectivityException
-import dev.felipejoglar.klimate.data.InvalidDataException
-import dev.felipejoglar.klimate.data.WeatherRepository
-import dev.felipejoglar.klimate.data.remote.infra.KtorWeatherApi
+import dev.felipejoglar.klimate.currentweather.data.ConnectivityException
+import dev.felipejoglar.klimate.currentweather.data.InvalidDataException
+import dev.felipejoglar.klimate.currentweather.data.WeatherRepository
+import dev.felipejoglar.klimate.currentweather.data.device.Geocoder
+import dev.felipejoglar.klimate.currentweather.data.device.ReverseGeocoder
+import dev.felipejoglar.klimate.currentweather.data.remote.infra.KtorWeatherApi
+import dev.felipejoglar.klimate.currentweather.domain.model.Address
+import dev.felipejoglar.klimate.currentweather.domain.model.Location
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
@@ -17,6 +21,7 @@ import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class WeatherRepositoryTest {
@@ -24,11 +29,14 @@ class WeatherRepositoryTest {
     private val httpEngine = mockEngine()
     private val remoteDataSource = createRemoteDataSource(httpEngine)
 
-    private val sut = WeatherRepository(remoteDataSource)
+    private val reverseGeocoder = ReverseGeocoderStub()
+    private val geocoder = Geocoder(reverseGeocoder)
+
+    private val sut = WeatherRepository(remoteDataSource, geocoder)
 
     @Test
     fun load_setsRequestUrlCorrectly() = runTest {
-        sut.load(latitude, longitude).collect()
+        sut.load(location).collect()
 
         val request = httpEngine.requestHistory.first()
         assertEquals(HttpMethod.Get, request.method, "Wrong request HTTP method")
@@ -51,7 +59,7 @@ class WeatherRepositoryTest {
     fun load_returnsCurrentWeather_onValidResponse() = runTest {
         httpEngine.completeSuccessfully(validResponseJson())
 
-        val result = sut.load(latitude, longitude).first()
+        val result = sut.load(location).first()
 
         assertEquals(validResponseModel(), result)
     }
@@ -61,7 +69,7 @@ class WeatherRepositoryTest {
         httpEngine.completeWithFailure()
 
         assertFailsWith(ConnectivityException::class) {
-            sut.load(latitude, longitude).collect()
+            sut.load(location).collect()
         }
     }
 
@@ -70,7 +78,7 @@ class WeatherRepositoryTest {
         httpEngine.completeSuccessfully("invalid json")
 
         assertFailsWith(InvalidDataException::class) {
-            sut.load(latitude, longitude).collect()
+            sut.load(location).collect()
         }
     }
 
@@ -80,7 +88,7 @@ class WeatherRepositoryTest {
             httpEngine.completeSuccessfullyWithStatusCode(code)
 
             assertFailsWith(InvalidDataException::class) {
-                sut.load(latitude, longitude).collect()
+                sut.load(location).collect()
             }
         }
     }
@@ -92,18 +100,39 @@ class WeatherRepositoryTest {
 
         httpEngine.completeSuccessfully(validResponseJson(latitude = invalidLatitude))
         assertFailsWith(InvalidDataException::class, "Invalid latitude") {
-            sut.load(latitude, longitude).collect()
+            sut.load(location).collect()
         }
 
         httpEngine.completeSuccessfully(validResponseJson(longitude = invalidLongitude))
         assertFailsWith(InvalidDataException::class, "Invalid longitude") {
-            sut.load(latitude, longitude).collect()
+            sut.load(location).collect()
         }
 
         httpEngine.completeSuccessfully(invalidResponseJson())
         assertFailsWith(InvalidDataException::class, "Invalid forecasts count") {
-            sut.load(latitude, longitude).collect()
+            sut.load(location).collect()
         }
+    }
+
+    @Test
+    fun load_setAddressCorrectly_onSuccessfulGeocoding() = runTest {
+        val address = validAddress()
+        httpEngine.completeSuccessfully(validResponseJson())
+        reverseGeocoder.completeSuccessfully(address)
+
+        val result = sut.load(location).first()
+
+        assertEquals(address, result.place.address)
+    }
+
+    @Test
+    fun load_setNullAddress_onGeocodingFailure() = runTest {
+        httpEngine.completeSuccessfully(validResponseJson())
+        reverseGeocoder.completeWithFailure()
+
+        val result = sut.load(location).first()
+
+        assertNull(result.place.address)
     }
 
     // region Helpers
@@ -120,6 +149,7 @@ class WeatherRepositoryTest {
 
     private val latitude = 12.4567
     private val longitude = -9.8765
+    private val location = Location(latitude, longitude)
 
     private val currentWeatherParams = listOf(
         "weather_code",
@@ -176,6 +206,22 @@ class WeatherRepositoryTest {
     private fun MockEngine.completeWithFailure() {
         config.requestHandlers.clear()
         config.requestHandlers.add { throw Exception() }
+    }
+
+    private class ReverseGeocoderStub : ReverseGeocoder {
+        private var address: Address? = null
+
+        override suspend fun fromLocation(latitude: Double, longitude: Double): Address? {
+            return address
+        }
+
+        fun completeSuccessfully(address: Address) {
+            this.address = address
+        }
+
+        fun completeWithFailure() {
+            this.address = null
+        }
     }
 
     // endregion

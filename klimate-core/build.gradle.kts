@@ -7,6 +7,14 @@ plugins {
 kotlin {
     task("testClasses")
 
+    targets.all {
+        compilations.all {
+            kotlinOptions {
+                freeCompilerArgs += "-Xexpect-actual-classes"
+            }
+        }
+    }
+
     androidTarget {
         compilations.all {
             kotlinOptions {
